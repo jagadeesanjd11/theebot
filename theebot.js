@@ -132,6 +132,18 @@ class TheeBot {
     });
     return systemOutPromise;
   }
+  async requestHandle(request) {
+    let requestPromise = new Promise(function (resolve, reject) {
+      var body = "";
+      request.on("data", function (data) {
+        body += data;
+      });
+      request.on("end", function () {
+        resolve(body);
+      });
+    });
+    return requestPromise;
+  }
   async createTCP(port = 8081) {
     let html = "";
     port = port ? port : 8081;
@@ -189,10 +201,9 @@ class TheeBot {
             </form> 
             <script>
             function send(event){
-                var sendForm = new URLSearchParams(new FormData(document.querySelector("#sendForm")));
                 var request= new XMLHttpRequest(); 
-                request.open('get', '/cratefile?' + sendForm, true); 
-                request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                request.open('post', '/cratefile', true); 
+                request.setRequestHeader("Content-Type", "application/json");
                 request.onreadystatechange = function() { 
                     if (this.readyState == 4) { 
                     var data = this.responseText; 
@@ -201,7 +212,13 @@ class TheeBot {
                         result.innerText = this.responseText;
                     }
                 };
-                request.send();
+                var sendForm = new FormData(document.querySelector("#sendForm"));
+                var sendData = {};
+                sendForm.forEach(function(value,key){
+                   console.log(value,key); 
+                   sendData[key]=value;
+                });
+                request.send(JSON.stringify(sendData));
                 return false;
             }
             </script>
@@ -210,21 +227,30 @@ class TheeBot {
             response.writeHead(200, { "Content-Type": "text/html" });
             response.write(html);
           } else if (pathname == "/cratefile") {
-            console.log("Request for task received.", urldata.query);
             response.writeHead(200, { "Content-Type": "text/plain" });
-
             try {
-              if (urldata.query.pass == this.authPassword) {
-                let data = urldata.query.content;
-                fs.writeFileSync(urldata.query.filename, data);
-                let savefile = fs.readFileSync(urldata.query.filename, "utf8");
-                response.write(
-                  `File saved\n----------------------\n` + savefile
-                );
+              if (request.method == "POST") {
+                try {
+                  let body = await this.requestHandle(request);
+                  let post = JSON.parse(body);
+                  if (post.pass == this.authPassword) {
+                    let data = post.content;
+                    fs.writeFileSync(post.filename, data);
+                    let savefile = fs.readFileSync(post.filename, "utf8");
+                    response.write(
+                      `File saved\n----------------------\n` + savefile
+                    );
+                  } else {
+                    response.write("Password is Incorrect");
+                  }
+                } catch (error) {
+                  response.write(error.message);
+                }
               } else {
-                response.write("Password is Incorrect");
+                response.write("Invaild " + request.method + "method");
               }
             } catch (error) {
+              console.log("error", error);
               response.write(error.message);
             }
           } else {
@@ -325,7 +351,7 @@ class TheeBot {
 }
 let theeBot = new TheeBot();
 // let portno = 8081;
-// if (typeof file_id != undefined) {
-//   portno = portno;
+// if (typeof file_id != "undefined") {
+//   portno = file_id;
 // }
 // theeBot.createTCP(portno);
